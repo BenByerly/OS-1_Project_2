@@ -345,6 +345,10 @@ thread_get_priority (void)
   return thread_current ()->priority;
 }
 
+
+
+
+
 /* Sets the current thread's nice value to NICE. */
 void
 thread_set_nice (int nice UNUSED) 
@@ -375,6 +379,13 @@ thread_get_recent_cpu (void)
   /* Not yet implemented. */
   return 0;
 }
+
+
+
+
+
+
+
 
 /* Idle thread.  Executes when no other thread is ready to run.
 
@@ -462,6 +473,21 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+
+///////////////////////////////////////////////////////////////////////
+// initializing variables for project 2
+  t->wakeup_tick = 0;
+  t->base_priority = priority;
+  list_init(&t->donations);
+  t->wait_lock = NULL;
+  t->nice = 0;
+  t->recent_cpu = 0;
+//////////////////////////////////////////////////////////////////////
+
+
+
+
+
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();
