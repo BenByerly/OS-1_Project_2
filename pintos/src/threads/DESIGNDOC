@@ -1,0 +1,160 @@
+			+--------------------+
+			|        CS 4100     |
+	  		|       PROJECT 2    |
+			|   DESIGN DOCUMENT  |
+			+--------------------+
+				   
+---- GROUP ----
+
+Ben Byerly         bobyerly42@tntech.edu
+Levi Spellmeyer    lgspellmey42@tntech.edu
+Gage Jones
+Nicholas Florence
+
+---- PRELIMINARIES ---- 
+
+>> This document describes our implementation of Alarm Clock and Basic Priority Scheduling for Pintos Project 2. 
+
+>> PRIORITY DONATION AND MLFQS ARE NOT IMPLEMENTED YET OR BY DESIGN
+
+ALARM CLOCK 
+=================================================================================================
+
+---- DATA STRUCTURES ----
+
+>> in thread.h:
+>> // below is to be used by sleeping threads to record the tick at when they should be unblocked. 
+>> int64_t wakeup_tick; 
+
+>> in timer.c:
+>> // below is to store blocked threads and sorted by the earliest wakeup time.
+>> static struct list sleep_list;
+
+>> comparator that is used for the ordered insertionn:
+>> // this purpose below is to ensure sleep_list remains sorted by the wakeup_tick
+>> bool wakeup_tick_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+
+
+
+---- ALGORITHMS ----
+
++== timer_sleep(ticks): ==+
+>> this calculates wakeup_tick = timer_ticks() + ticks
+>> disables interrupt
+>> inserts the current thread into sleep_list in sorted order. 
+>> calls thread_block() to put the thread to sleep
+>> restores the interrupt level
+
++=== timer_interrupt() ==+
+>> Everything below happens at each tick
+>> increments global ticks
+>> calls thread_tick()
+>> checks the front of the sleep_list
+>> while the earliest thread's wakeup_tick <= ticks
+>>   it will remove it from sleep_list
+>>   and call thread_unblock(thread)
+>> since the list is sorted, only the front needs to be checked. helps with compute. 
+
+
+
+---- SYNCHRONIZATION ----
+
+>> sleep_list is always acessed with interrupts disabled
+>> this will prevent some race conditions between the following:
+>>   inserting sleeping threads
+>>   waking threads in the interrupt handler
+>> thread-block() and thread_unblock() alredy need to have interrupts off
+
+>> this will guarantee:
+>>   ordering of wakeups
+>>   no missed wakeups
+>>   no reordering of any sleeping threads
+>> no edge cases where an idle thread is not inserted into sleep_list
+
+----RATIONALE ----
+
+>> Advantages
+>>   sorted insertion makes sure that the wakeups are O(1) because only head needs to be checked
+>>   simple and efficient compared to scanning the list at each tick
+>>   few code changes to the OG structure
+
+>> Disadvantages
+>>   sorted insertion makes it O(n) since it is linear function: list_insert_ordered()
+>>   priority queue or binary would is more efficient 
+=================================================================================================
+ 
+
+
+PRIORITY SCHEDULING
+=================================================================================================
+
+---- DATA STRUCTURES ---- 
+>> no new stuct were required except: int base_priority;
+>> purpose is a place holder for work done with donation in the future
+
+
+---- ALGORITHMS ----
+
+>> Ready List Ordering
+>> ready_list is always kept sorted by priority by using:
+>>   bool thread_priority_compare(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+>> this is used in thread_unblock() and thread_yield()
+>> thread_unblock()
+>>   interrupts the disabled
+>>   inserts thread ready into ready list sorted by prio
+>>   marks thread_ready
+
+>> thread_yield()
+>>   current thread (if not idle) gets reinserted into the ready list
+>>   ready list stays sorted
+>>   scheduler chooses from the front of the list
+
+>> Preemption logic below
+>> thread_create()
+>>   if(t->priority > thread_current()->priority)
+>>      thread_yield();
+>> thread_set_priority()
+>>   if(highest_ready->priority > cur->priority)
+>>      thready_yield();
+
+>> these make sure 
+>>  newly created higher prio thready will preempt 
+>> lowering the current thread's prio will trigger the preempt
+
+
+---- SYNCHRONIZATION ----
+>> all opertions that modify ready_list will occure with interrupts disabled
+>> this will avoid race conditions between yield/unblock and the handler
+
+>> edge cases
+>>  idle thread is never added to ready_list
+>>  no donation logic yetmeans that no recursive locking issue. 
+
+
+
+--- RATIONALE ---- 
+>> advantages
+>>   basic prio scheudling
+>>   matches the pintos specifications for 
+>>      prio-fifo
+>>      prio-preempt
+>>      alarm-priority
+>> scheudler always picks highest prio
+
+>> disadvantages
+>>  no prio donation yet so prio inversion isnt possible
+>>  ready_list uses O(n) ordered list instead of a heap 
+
+=================================================================================================
+END OF DESIGN DOCUMENT    
+
+
+
+
+
+
+
+
+
+
+

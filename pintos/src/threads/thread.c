@@ -162,6 +162,9 @@ thread_print_stats (void)
    The code provided sets the new thread's `priority' member to
    PRIORITY, but no actual priority scheduling is implemented.
    Priority scheduling is the goal of Problem 1-3. */
+
+///////////////////////////////////////////////////////////////////////////////////
+
 tid_t
 thread_create (const char *name, int priority,
                thread_func *function, void *aux) 
@@ -201,8 +204,14 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
+  if(t->priority > thread_current()->priority)
+    thread_yield();
+
   return tid;
 }
+
+
+/////////////////////////////////////////////////////////////////////////////////////////////
 
 /* Puts the current thread to sleep.  It will not be scheduled
    again until awoken by thread_unblock().
@@ -228,6 +237,19 @@ thread_block (void)
    be important: if the caller had disabled interrupts itself,
    it may expect that it can atomically unblock a thread and
    update other data. */
+
+///////////////////////////////////////////////////////////////////
+//added insert line for priority
+// added comparator function
+
+bool
+thread_priority_compare(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+{
+  const struct thread *t_a = list_entry(a, struct thread, elem);
+  const struct thread *t_b = list_entry(b, struct thread, elem);
+  return t_a->priority > t_b->priority;
+}
+
 void
 thread_unblock (struct thread *t) 
 {
@@ -237,10 +259,12 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  list_insert_ordered(&ready_list, &t->elem, thread_priority_compare, NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
+///////////////////////////////////////////////////////////////////
+
 
 /* Returns the name of the running thread. */
 const char *
@@ -308,7 +332,9 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+    list_insert_ordered(&ready_list, &cur->elem, thread_priority_compare, NULL);
+
+  
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -335,15 +361,33 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  return;
+  struct thread *cur = thread_current();
+  int old_priority = cur->priority;
+
+
+   cur->priority = new_priority;
+
+  if(!list_empty(&ready_list))
+  {
+    struct thread *highest = list_entry(list_front(&ready_list), struct thread, elem);
+
+    if(highest->priority > cur->priority)
+      thread_yield();
+  }
 }
 
+
 /* Returns the current thread's priority. */
+////////////////////////////////////////////////
 int
 thread_get_priority (void) 
 {
-  return thread_current ()->priority;
+  return thread_current()->priority;
 }
+////////////////////////////////////////////////
+
+
+
 
 /* Sets the current thread's nice value to NICE. */
 void
@@ -375,6 +419,13 @@ thread_get_recent_cpu (void)
   /* Not yet implemented. */
   return 0;
 }
+
+
+
+
+
+
+
 
 /* Idle thread.  Executes when no other thread is ready to run.
 
@@ -462,6 +513,23 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+
+  t->base_priority = priority;
+
+///////////////////////////////////////////////////////////////////////
+// initializing variables for project 2
+  t->wakeup_tick = 0;
+  t->base_priority = priority;
+  list_init(&t->donations);
+  t->wait_lock = NULL;
+  t->nice = 0;
+  t->recent_cpu = 0;
+//////////////////////////////////////////////////////////////////////
+
+
+
+
+
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();

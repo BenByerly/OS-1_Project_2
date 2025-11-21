@@ -98,6 +98,19 @@ struct thread
     uint32_t *pagedir;                  /* Page directory. */
 #endif
 
+
+////////////////////////////////////////////
+    // ALARM CLOCK
+    int64_t wakeup_tick;
+    int base_priority;
+    struct list donations;
+    struct list_elem donation_elem;
+    struct lock *wait_lock;
+
+    int nice;
+    int recent_cpu;
+/////////////////////////////////////////////
+
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
