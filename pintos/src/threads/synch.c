@@ -174,16 +174,6 @@ sema_test_helper (void *sema_)
    instead of a lock. */
 
 ////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
-/* Compare two donated threads by priority (for list_insert_ordered / list_max). */
-static bool
-donation_priority_higher (const struct list_elem *a,
-                          const struct list_elem *b,
-                          void *aux UNUSED)
-{
-  const struct thread *ta = list_entry (a, struct thread, donation_elem);
-  const struct thread *tb = list_entry (b, struct thread, donation_elem);
-  return ta->priority > tb->priority;
-}
 
 /* Propagate priority donation along the chain of locks.
    Assumption: limit depth to avoid infinite loops (standard Pintos uses 8). */
@@ -223,24 +213,6 @@ remove_lock_donations (struct lock *lock)
         list_remove (e);
 
       e = next;
-    }
-}
-
-/* Recalculate a thread's effective priority from its base priority and
-   any remaining donations. */
-static void
-refresh_priority (struct thread *t)
-{
-  t->priority = t->base_priority;
-
-  if (!list_empty (&t->donations))
-    {
-      struct list_elem *e =
-        list_max (&t->donations, donation_priority_higher, NULL);
-      struct thread *top = list_entry (e, struct thread, donation_elem);
-
-      if (top->priority > t->priority)
-        t->priority = top->priority;
     }
 }
 ////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
