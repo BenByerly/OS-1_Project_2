@@ -323,7 +323,9 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+    list_insert_ordered(&ready_list, &cur->elem, thread_priority_compare, NULL);
+
+
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -350,16 +352,28 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  return;
+  struct thread *cur = thread_current();
+  cur->base_priority = new_priority;
+  cur->priority = new_priority;
+
+  if(!list_empty(&ready_list))
+  {
+    struct thread *highest = list_entry(list_front(&ready_list), struct thread, elem);
+
+    if(highest->priority > cur->priority)
+      thread_yield();
+  }
 }
 
+
 /* Returns the current thread's priority. */
+////////////////////////////////////////////////
 int
 thread_get_priority (void) 
 {
-  return thread_current ()->priority;
+  return thread_current()->priority;
 }
-
+////////////////////////////////////////////////
 
 
 
@@ -488,6 +502,8 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+
+  t->base_priority = priority;
 
 ///////////////////////////////////////////////////////////////////////
 // initializing variables for project 2
