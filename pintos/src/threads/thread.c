@@ -228,6 +228,19 @@ thread_block (void)
    be important: if the caller had disabled interrupts itself,
    it may expect that it can atomically unblock a thread and
    update other data. */
+
+///////////////////////////////////////////////////////////////////
+//added insert line for priority
+// added comparator function
+
+bool
+thread_priority_compare(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+{
+  const struct thread *t_a = list_entry(a, struct thread, elem);
+  const struct thread *t_b = list_entry(b, struct thread, elem);
+  return t_a->priority > t_b->priority;
+}
+
 void
 thread_unblock (struct thread *t) 
 {
@@ -237,10 +250,12 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  list_insert_ordered(&ready_list, &t->elem, thread_priority_compare, NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
+///////////////////////////////////////////////////////////////////
+
 
 /* Returns the name of the running thread. */
 const char *

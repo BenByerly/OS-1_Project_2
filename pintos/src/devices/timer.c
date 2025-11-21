@@ -94,15 +94,39 @@ timer_elapsed (int64_t then)
 
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
+//////////////////////////////////////////////////////////
+// Replaced old busy-wait implementation
+// Wakeup comparator function
+
+static bool
+wakeup_tick_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+{
+  struct thread *t_a = list_entry(a, struct thread, elem);
+  struct thread *t_b = list_entry(b, struct thread, elem);
+  return t_a->wakeup_tick < t_b->wakeup_tick; // return true if thread a wakes before thread b
+}
+
+
 void
 timer_sleep (int64_t ticks) 
 {
-  int64_t start = timer_ticks ();
+  if (ticks <=0)
+    return;
 
-  ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+  int64_t wake_time = timer_ticks() + ticks;
+  struct thread *cur = thread_current();
+
+  enum intr_level old_level = intr_disable();
+  cur->wakeup_tick = wake_time;
+
+  list_insert_ordered(&sleep_list, &cur->elem, (list_less_func *)&wakeup_tick_less, NULL);
+
+  thread_block();
+  intr_set_level(old_level);
 }
+
+////////////////////////////////////////////////////////////
+
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
    turned on. */
@@ -173,14 +197,34 @@ timer_print_stats (void)
 {
   printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
+
+
 
 /* Timer interrupt handler. */
+//////////////////////////////////////////////
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   thread_tick ();
+  
+
+  enum intr_level old_level = intr_disable();
+  while(!list_empty(&sleep_list))
+  {
+    struct thread *t = list_entry(list_front(&sleep_list), struct thread, elem);
+
+    if(t->wakeup_tick > ticks)
+      break;
+
+    list_pop_front(&sleep_list);
+    thread_unblock(t);
+  }
+  intr_set_level(old_level);
+  
 }
+////////////////////////////////////////////////////
+
 
 /* Returns true if LOOPS iterations waits for more than one timer
    tick, otherwise false. */
