@@ -10,12 +10,14 @@ Ben Byerly         bobyerly42@tntech.edu
 Levi Spellmeyer    lgspellmey42@tntech.edu
 Gage Jones
 Nicholas Florence
+Mark Weber         mpweber42@tntech.edu
 
 ---- PRELIMINARIES ---- 
 
 >> This document describes our implementation of Alarm Clock and Basic Priority Scheduling for Pintos Project 2. 
 
 >> PRIORITY DONATION AND MLFQS ARE NOT IMPLEMENTED YET OR BY DESIGN
+>> PRIORITY MIGHT BE DONE, IM NOT SURE YET. (MARK WEBER)
 
 ALARM CLOCK 
 =================================================================================================
@@ -146,6 +148,75 @@ PRIORITY SCHEDULING
 >>  ready_list uses O(n) ordered list instead of a heap 
 
 =================================================================================================
+
+
+
+PRIORITY DONATION
+=================================================================================================
+
+---- DATA STRUCTURES ----
+
+>> in thread.h:
+>> // base priority is preserved so a thread can restore it after releasing locks
+>> int base_priority;       
+>>
+>> // list of threads that have donated to this thread
+>> struct list donations;   
+>>
+>> // list_elem used when this thread appears in another thread’s donation list
+>> struct list_elem donation_elem;
+
+
+---- ALGORITHMS ----
+
++== lock_acquire(lock *lock): ==+
+>> checks if the lock is already held by another thread
+>> if so:
+>>   - sets current thread’s wait_lock = lock
+>>   - inserts current thread into lock-holder’s donation list
+>>     using list_insert_ordered() with donation priority comparator
+>>   - propagates the donation through nested locking chains (max depth = 8)
+>> sema_down() is called to actually acquire the lock
+>> after acquiring:
+>>   - wait_lock is cleared
+>>   - lock->holder = current thread
+
++== lock_release(lock *lock): ==+
+>> removes any donation entries that were made because the current thread
+>> was holding this lock
+>> recomputes current thread’s effective priority using:
+>>   - its base_priority
+>>   - remaining highest donated priority (if any)
+>> lock->holder is set to NULL
+>> sema_up() wakes the highest priority waiter
+
+
+---- SYNCHRONIZATION ----
+
+>> donation list modifications occur with interrupts disabled (inside sema_down/up)
+>> ensures no race conditions between:
+>>   - threads donating priority
+>>   - threads acquiring/releasing locks
+>> threads maintain wait_lock so nested donation chains can be followed reliably
+>> donation removal occurs before priority refresh to avoid stale donors
+
+
+---- RATIONALE ----
+
+>> Advantages
+>>   resolves priority inversion where a low-priority lock holder blocks a
+>>   higher-priority thread
+>>   supports nested donation (chain donation)
+>>   supports multiple donors waiting on the same lock
+>>   integrates cleanly with existing priority scheduler structures
+
+>> Disadvantages
+>>   donation propagation adds overhead (O(n) per insertion + chain traversal)
+>>   recursion depth capped at 8 to avoid infinite loops
+>>   requires careful management of donation list ordering
+
+=================================================================================================
+
 END OF DESIGN DOCUMENT    
 
 

@@ -189,16 +189,37 @@ lock_init (struct lock *lock)
    interrupt handler.  This function may be called with
    interrupts disabled, but interrupts will be turned back on if
    we need to sleep. */
+////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
 void
 lock_acquire (struct lock *lock)
 {
+  struct thread *cur = thread_current ();
+
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
+  /* Priority donation: if the lock is already held, donate. */
+  if (lock->holder != NULL)
+    {
+      /* Remember which lock we are waiting on. */
+      cur->wait_lock = lock;
+
+      /* Add current thread to holder's donation list ordered by priority. */
+      list_insert_ordered (&lock->holder->donations, &cur->donation_elem, donation_priority_higher, NULL);
+
+      /* Propagate donation through nested chain of locks, if any. */
+      donate_chain (cur);
+    }
+
+  /* Actually acquire the lock (may block). */
   sema_down (&lock->semaphore);
-  lock->holder = thread_current ();
+
+  /* Once we acquire the lock, we are no longer waiting on it. */
+  cur->wait_lock = NULL;
+  lock->holder = cur;
 }
+////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
 
 /* Tries to acquires LOCK and returns true if successful or false
    on failure.  The lock must not already be held by the current
@@ -225,15 +246,97 @@ lock_try_acquire (struct lock *lock)
    An interrupt handler cannot acquire a lock, so it does not
    make sense to try to release a lock within an interrupt
    handler. */
+////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
 void
 lock_release (struct lock *lock) 
 {
+  struct thread *cur = thread_current ();
+
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
+
+  /* Remove donations that were made because of this lock. */
+  remove_lock_donations (lock);
+
+  /* Recompute our effective priority from base + remaining donations. */
+  refresh_priority (cur);
 
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 }
+
+
+/* Compare two donated threads by priority (for list_insert_ordered / list_max). */
+static bool
+donation_priority_higher (const struct list_elem *a,
+                          const struct list_elem *b,
+                          void *aux UNUSED)
+{
+  const struct thread *ta = list_entry (a, struct thread, donation_elem);
+  const struct thread *tb = list_entry (b, struct thread, donation_elem);
+  return ta->priority > tb->priority;
+}
+
+/* Propagate priority donation along the chain of locks.
+   Assumption: limit depth to avoid infinite loops (standard Pintos uses 8). */
+static void
+donate_chain (struct thread *donor)
+{
+  struct lock *lock = donor->wait_lock;
+  int depth = 0;
+
+  while (lock != NULL && lock->holder != NULL && depth < 8)
+    {
+      struct thread *holder = lock->holder;
+
+      if (holder->priority < donor->priority)
+        holder->priority = donor->priority;
+
+      donor = holder;
+      lock = holder->wait_lock;
+      depth++;
+    }
+}
+
+/* Remove from the current thread's donation list all donors that were
+   waiting on the given lock. */
+static void
+remove_lock_donations (struct lock *lock)
+{
+  struct thread *cur = thread_current ();
+  struct list_elem *e = list_begin (&cur->donations);
+
+  while (e != list_end (&cur->donations))
+    {
+      struct thread *t = list_entry (e, struct thread, donation_elem);
+      struct list_elem *next = list_next (e);
+
+      if (t->wait_lock == lock)
+        list_remove (e);
+
+      e = next;
+    }
+}
+
+/* Recalculate a thread's effective priority from its base priority and
+   any remaining donations. */
+static void
+refresh_priority (struct thread *t)
+{
+  t->priority = t->base_priority;
+
+  if (!list_empty (&t->donations))
+    {
+      struct list_elem *e =
+        list_max (&t->donations, donation_priority_higher, NULL);
+      struct thread *top = list_entry (e, struct thread, donation_elem);
+
+      if (top->priority > t->priority)
+        t->priority = top->priority;
+    }
+}
+
+////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
 
 /* Returns true if the current thread holds LOCK, false
    otherwise.  (Note that testing whether some other thread holds
