@@ -362,9 +362,10 @@ void
 thread_set_priority (int new_priority) 
 {
   struct thread *cur = thread_current();
+  int old_priority = cur->priority;
 
-//  cur->base_priority = new_priority;
-  cur->priority = new_priority;
+
+   cur->priority = new_priority;
 
   if(!list_empty(&ready_list))
   {
