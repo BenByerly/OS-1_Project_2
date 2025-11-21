@@ -172,6 +172,81 @@ sema_test_helper (void *sema_)
    acquire and release it.  When these restrictions prove
    onerous, it's a good sign that a semaphore should be used,
    instead of a lock. */
+
+////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
+/* Compare two donated threads by priority (for list_insert_ordered / list_max). */
+static bool
+donation_priority_higher (const struct list_elem *a,
+                          const struct list_elem *b,
+                          void *aux UNUSED)
+{
+  const struct thread *ta = list_entry (a, struct thread, donation_elem);
+  const struct thread *tb = list_entry (b, struct thread, donation_elem);
+  return ta->priority > tb->priority;
+}
+
+/* Propagate priority donation along the chain of locks.
+   Assumption: limit depth to avoid infinite loops (standard Pintos uses 8). */
+static void
+donate_chain (struct thread *donor)
+{
+  struct lock *lock = donor->wait_lock;
+  int depth = 0;
+
+  while (lock != NULL && lock->holder != NULL && depth < 8)
+    {
+      struct thread *holder = lock->holder;
+
+      if (holder->priority < donor->priority)
+        holder->priority = donor->priority;
+
+      donor = holder;
+      lock = holder->wait_lock;
+      depth++;
+    }
+}
+
+/* Remove from the current thread's donation list all donors that were
+   waiting on the given lock. */
+static void
+remove_lock_donations (struct lock *lock)
+{
+  struct thread *cur = thread_current ();
+  struct list_elem *e = list_begin (&cur->donations);
+
+  while (e != list_end (&cur->donations))
+    {
+      struct thread *t = list_entry (e, struct thread, donation_elem);
+      struct list_elem *next = list_next (e);
+
+      if (t->wait_lock == lock)
+        list_remove (e);
+
+      e = next;
+    }
+}
+
+/* Recalculate a thread's effective priority from its base priority and
+   any remaining donations. */
+static void
+refresh_priority (struct thread *t)
+{
+  t->priority = t->base_priority;
+
+  if (!list_empty (&t->donations))
+    {
+      struct list_elem *e =
+        list_max (&t->donations, donation_priority_higher, NULL);
+      struct thread *top = list_entry (e, struct thread, donation_elem);
+
+      if (top->priority > t->priority)
+        t->priority = top->priority;
+    }
+}
+////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
+
+
+
 void
 lock_init (struct lock *lock)
 {
@@ -189,7 +264,10 @@ lock_init (struct lock *lock)
    interrupt handler.  This function may be called with
    interrupts disabled, but interrupts will be turned back on if
    we need to sleep. */
+  
 ////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
+
+
 void
 lock_acquire (struct lock *lock)
 {
@@ -264,78 +342,6 @@ lock_release (struct lock *lock)
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 }
-
-
-/* Compare two donated threads by priority (for list_insert_ordered / list_max). */
-static bool
-donation_priority_higher (const struct list_elem *a,
-                          const struct list_elem *b,
-                          void *aux UNUSED)
-{
-  const struct thread *ta = list_entry (a, struct thread, donation_elem);
-  const struct thread *tb = list_entry (b, struct thread, donation_elem);
-  return ta->priority > tb->priority;
-}
-
-/* Propagate priority donation along the chain of locks.
-   Assumption: limit depth to avoid infinite loops (standard Pintos uses 8). */
-static void
-donate_chain (struct thread *donor)
-{
-  struct lock *lock = donor->wait_lock;
-  int depth = 0;
-
-  while (lock != NULL && lock->holder != NULL && depth < 8)
-    {
-      struct thread *holder = lock->holder;
-
-      if (holder->priority < donor->priority)
-        holder->priority = donor->priority;
-
-      donor = holder;
-      lock = holder->wait_lock;
-      depth++;
-    }
-}
-
-/* Remove from the current thread's donation list all donors that were
-   waiting on the given lock. */
-static void
-remove_lock_donations (struct lock *lock)
-{
-  struct thread *cur = thread_current ();
-  struct list_elem *e = list_begin (&cur->donations);
-
-  while (e != list_end (&cur->donations))
-    {
-      struct thread *t = list_entry (e, struct thread, donation_elem);
-      struct list_elem *next = list_next (e);
-
-      if (t->wait_lock == lock)
-        list_remove (e);
-
-      e = next;
-    }
-}
-
-/* Recalculate a thread's effective priority from its base priority and
-   any remaining donations. */
-static void
-refresh_priority (struct thread *t)
-{
-  t->priority = t->base_priority;
-
-  if (!list_empty (&t->donations))
-    {
-      struct list_elem *e =
-        list_max (&t->donations, donation_priority_higher, NULL);
-      struct thread *top = list_entry (e, struct thread, donation_elem);
-
-      if (top->priority > t->priority)
-        t->priority = top->priority;
-    }
-}
-
 ////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
 
 /* Returns true if the current thread holds LOCK, false
