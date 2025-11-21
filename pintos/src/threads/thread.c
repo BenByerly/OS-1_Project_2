@@ -333,11 +333,8 @@ thread_yield (void)
   old_level = intr_disable ();
   if (cur != idle_thread) 
     list_insert_ordered(&ready_list, &cur->elem, thread_priority_compare, NULL);
-<<<<<<< HEAD
 
-
-=======
->>>>>>> added priority ordering
+  
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -365,32 +362,17 @@ void
 thread_set_priority (int new_priority) 
 {
   struct thread *cur = thread_current();
-<<<<<<< HEAD
+
 //  cur->base_priority = new_priority;
- // cur->priority = new_priority;
-
-//  if(!list_empty(&ready_list))
-//  {
-//    struct thread *highest = list_entry(list_front(&ready_list), struct thread, elem);
-
-//    if(highest->priority > cur->priority)
-//      thread_yield();
-//  }
-=======
-  int old_priority = cur->priority;
-
   cur->priority = new_priority;
 
-  if(new_priority < old_priority){
-    if(!list_empty(&ready_list)){
-      struct thread *highest = list_entry(list_front(&ready_list), struct thread, elem);
+  if(!list_empty(&ready_list))
+  {
+    struct thread *highest = list_entry(list_front(&ready_list), struct thread, elem);
 
-      if(highest->priority > cur->priority)
-        thread_yield();
-
+    if(highest->priority > cur->priority)
+      thread_yield();
   }
- } 
->>>>>>> added priority ordering
 }
 
 
