@@ -346,15 +346,16 @@ lock_held_by_current_thread (const struct lock *lock)
   return lock->holder == thread_current ();
 }
 
+////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
 /* One semaphore in a list. */
 struct semaphore_elem 
   {
     struct list_elem elem;              /* List element. */
     struct semaphore semaphore;         /* This semaphore. */
+    int priority;                       /* Priority of waiting thread. */
   };
-  
-  ////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
-/* Compare two semaphore_elem by the highest-priority thread waiting on each. */
+
+/* Compare two condition waiters by their stored priority. */
 static bool
 cond_sema_priority_higher (const struct list_elem *a,
                            const struct list_elem *b,
@@ -363,13 +364,9 @@ cond_sema_priority_higher (const struct list_elem *a,
   const struct semaphore_elem *sa = list_entry (a, struct semaphore_elem, elem);
   const struct semaphore_elem *sb = list_entry (b, struct semaphore_elem, elem);
 
-  const struct thread *ta = list_entry (list_front (&sa->semaphore.waiters),
-                                        struct thread, elem);
-  const struct thread *tb = list_entry (list_front (&sb->semaphore.waiters),
-                                        struct thread, elem);
-
-  return ta->priority > tb->priority;
+  return sa->priority > sb->priority;
 }
+
   ////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
 
 /* Initializes condition variable COND.  A condition variable
@@ -415,6 +412,9 @@ cond_wait (struct condition *cond, struct lock *lock)
   
   sema_init (&waiter.semaphore, 0);
   ////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
+  /* Store the priority of the thread that will wait here. */
+  waiter.priority = thread_current ()->priority;
+ 
   list_insert_ordered (&cond->waiters, &waiter.elem, cond_sema_priority_higher, NULL);
   ////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
   lock_release (lock);
@@ -437,9 +437,16 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
   ASSERT (!intr_context ());
   ASSERT (lock_held_by_current_thread (lock));
 
+    ////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
   if (!list_empty (&cond->waiters)) 
-    sema_up (&list_entry (list_pop_front (&cond->waiters),
-                          struct semaphore_elem, elem)->semaphore);
+    {
+      /* Highest-priority waiter is at the front. */
+      struct semaphore_elem *se =
+        list_entry (list_pop_front (&cond->waiters),
+                    struct semaphore_elem, elem);
+      sema_up (&se->semaphore);
+    }
+      ////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by
