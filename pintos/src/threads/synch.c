@@ -352,6 +352,25 @@ struct semaphore_elem
     struct list_elem elem;              /* List element. */
     struct semaphore semaphore;         /* This semaphore. */
   };
+  
+  ////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
+/* Compare two semaphore_elem by the highest-priority thread waiting on each. */
+static bool
+cond_sema_priority_higher (const struct list_elem *a,
+                           const struct list_elem *b,
+                           void *aux UNUSED)
+{
+  const struct semaphore_elem *sa = list_entry (a, struct semaphore_elem, elem);
+  const struct semaphore_elem *sb = list_entry (b, struct semaphore_elem, elem);
+
+  const struct thread *ta = list_entry (list_front (&sa->semaphore.waiters),
+                                        struct thread, elem);
+  const struct thread *tb = list_entry (list_front (&sb->semaphore.waiters),
+                                        struct thread, elem);
+
+  return ta->priority > tb->priority;
+}
+  ////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
 
 /* Initializes condition variable COND.  A condition variable
    allows one piece of code to signal a condition and cooperating
@@ -395,7 +414,9 @@ cond_wait (struct condition *cond, struct lock *lock)
   ASSERT (lock_held_by_current_thread (lock));
   
   sema_init (&waiter.semaphore, 0);
-  list_push_back (&cond->waiters, &waiter.elem);
+  ////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
+  list_insert_ordered (&cond->waiters, &waiter.elem, cond_sema_priority_higher, NULL);
+  ////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
   lock_release (lock);
   sema_down (&waiter.semaphore);
   lock_acquire (lock);
