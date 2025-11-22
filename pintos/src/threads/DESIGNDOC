@@ -8,9 +8,9 @@
 
 Ben Byerly         bobyerly42@tntech.edu
 Levi Spellmeyer    lgspellmey42@tntech.edu
+Mark Weber         mpweber42@tntech.edu
 Gage Jones
 Nicholas Florence
-Mark Weber         mpweber42@tntech.edu
 
 ---- PRELIMINARIES ---- 
 
@@ -156,76 +156,62 @@ PRIORITY DONATION
 
 ---- DATA STRUCTURES ----
 
->> in thread.h:
->> // base priority is preserved so a thread can restore it after releasing locks
->> int base_priority;       
->>
->> // list of threads that have donated to this thread
->> struct list donations;   
->>
->> // list_elem used when this thread appears in another thread’s donation list
->> struct list_elem donation_elem;
+>> thread.h additions:
+>>   int base_priority;            // original priority
+>>   int priority;                 // effective priority
+>>   struct list donations;        // threads donating to this one
+>>   struct list_elem donation_elem;
+>>   struct lock *wait_lock;       // lock this thread is waiting on
+
+>> synch.c (condvar support):
+>>   semaphore_elem stores: elem, semaphore, int priority
 
 
 ---- ALGORITHMS ----
 
-+== lock_acquire(lock *lock): ==+
->> checks if the lock is already held by another thread
->> if so:
->>   - sets current thread’s wait_lock = lock
->>   - inserts current thread into lock-holder’s donation list
->>     using list_insert_ordered() with donation priority comparator
->>   - propagates the donation through nested locking chains (max depth = 8)
->> sema_down() is called to actually acquire the lock
->> after acquiring:
->>   - wait_lock is cleared
->>   - lock->holder = current thread
++== lock_acquire(lock): ==+
+>> if lock->holder != NULL:
+>>    - cur->wait_lock = lock
+>>    - insert cur into holder->donations (ordered by priority)
+>>    - propagate donation through wait_lock chain (depth ≤ 8)
+>> sema_down()
+>> cur->wait_lock = NULL
+>> lock->holder = cur
 
-+== lock_release(lock *lock): ==+
->> removes any donation entries that were made because the current thread
->> was holding this lock
->> recomputes current thread’s effective priority using:
->>   - its base_priority
->>   - remaining highest donated priority (if any)
->> lock->holder is set to NULL
->> sema_up() wakes the highest priority waiter
++== lock_release(lock): ==+
+>> remove donors whose wait_lock == lock
+>> refresh priority = max(base_priority, remaining donations)
+>> lock->holder = NULL
+>> sema_up() wakes highest-priority waiter
+
+
+---- PRIORITY-AWARE SEMAPHORES ----
+>> sema_down(): insert into waiters ordered by priority
+>> sema_up(): wake highest-priority waiter + preempt if needed
+
+
+---- PRIORITY-AWARE CONDITION VARIABLES ----
+>> cond_wait(): store waiter.priority, insert ordered
+>> cond_signal(): wake highest-priority waiter
 
 
 ---- SYNCHRONIZATION ----
-
->> donation list modifications occur with interrupts disabled (inside sema_down/up)
->> ensures no race conditions between:
->>   - threads donating priority
->>   - threads acquiring/releasing locks
->> threads maintain wait_lock so nested donation chains can be followed reliably
->> donation removal occurs before priority refresh to avoid stale donors
+>> donation + semaphore operations run with interrupts disabled
+>> wait_lock ensures nested donation works correctly
+>> donations cleaned before priority refresh
 
 
 ---- RATIONALE ----
 
->> Advantages
->>   resolves priority inversion where a low-priority lock holder blocks a
->>   higher-priority thread
->>   supports nested donation (chain donation)
->>   supports multiple donors waiting on the same lock
->>   integrates cleanly with existing priority scheduler structures
-
->> Disadvantages
->>   donation propagation adds overhead (O(n) per insertion + chain traversal)
->>   recursion depth capped at 8 to avoid infinite loops
->>   requires careful management of donation list ordering
+>> Advantages:
+>>   - prevents priority inversion under lock contention
+>>   - supports multiple donors and nested donation chains
+>>   - integrates with existing priority scheduler
+>>
+>> Disadvantages:
+>>   - list operations + donation chain traversal add O(n) overhead
+>>   - depth limit needed to avoid infinite loops
+>>   - correctness depends on proper ordering and cleanup of donation lists
 
 =================================================================================================
-
-END OF DESIGN DOCUMENT    
-
-
-
-
-
-
-
-
-
-
-
+END OF DESIGN DOCUMENT

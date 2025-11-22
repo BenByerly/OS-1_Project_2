@@ -68,10 +68,9 @@ sema_down (struct semaphore *sema)
   old_level = intr_disable ();
   while (sema->value == 0) 
     {
-      ////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
       /* Insert current thread in waiters list ordered by priority. */
       list_insert_ordered (&sema->waiters, &thread_current ()->elem, thread_priority_compare, NULL);
-      ////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
+      
       thread_block ();
     }
   sema->value--;
@@ -108,7 +107,6 @@ sema_try_down (struct semaphore *sema)
    and wakes up one thread of those waiting for SEMA, if any.
 
    This function may be called from an interrupt handler. */
-////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
 void
 sema_up (struct semaphore *sema) 
 {
@@ -137,7 +135,6 @@ sema_up (struct semaphore *sema)
       thread_yield ();
     }
 }
-////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
 
 static void sema_test_helper (void *sema_);
 
@@ -192,7 +189,6 @@ sema_test_helper (void *sema_)
    onerous, it's a good sign that a semaphore should be used,
    instead of a lock. */
 
-////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
 
 /* Propagate priority donation along the chain of locks.
    Assumption: limit depth to avoid infinite loops (standard Pintos uses 8). */
@@ -234,8 +230,6 @@ remove_lock_donations (struct lock *lock)
       e = next;
     }
 }
-////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
-
 
 
 void
@@ -255,8 +249,6 @@ lock_init (struct lock *lock)
    interrupt handler.  This function may be called with
    interrupts disabled, but interrupts will be turned back on if
    we need to sleep. */
-  
-////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
 
 
 void
@@ -288,7 +280,6 @@ lock_acquire (struct lock *lock)
   cur->wait_lock = NULL;
   lock->holder = cur;
 }
-////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
 
 /* Tries to acquires LOCK and returns true if successful or false
    on failure.  The lock must not already be held by the current
@@ -315,7 +306,6 @@ lock_try_acquire (struct lock *lock)
    An interrupt handler cannot acquire a lock, so it does not
    make sense to try to release a lock within an interrupt
    handler. */
-////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
 void
 lock_release (struct lock *lock) 
 {
@@ -333,7 +323,6 @@ lock_release (struct lock *lock)
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 }
-////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
 
 /* Returns true if the current thread holds LOCK, false
    otherwise.  (Note that testing whether some other thread holds
@@ -346,7 +335,7 @@ lock_held_by_current_thread (const struct lock *lock)
   return lock->holder == thread_current ();
 }
 
-////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
+
 /* One semaphore in a list. */
 struct semaphore_elem 
   {
@@ -357,17 +346,13 @@ struct semaphore_elem
 
 /* Compare two condition waiters by their stored priority. */
 static bool
-cond_sema_priority_higher (const struct list_elem *a,
-                           const struct list_elem *b,
-                           void *aux UNUSED)
+cond_sema_priority_higher (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
 {
   const struct semaphore_elem *sa = list_entry (a, struct semaphore_elem, elem);
   const struct semaphore_elem *sb = list_entry (b, struct semaphore_elem, elem);
 
   return sa->priority > sb->priority;
 }
-
-  ////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
 
 /* Initializes condition variable COND.  A condition variable
    allows one piece of code to signal a condition and cooperating
@@ -411,12 +396,10 @@ cond_wait (struct condition *cond, struct lock *lock)
   ASSERT (lock_held_by_current_thread (lock));
   
   sema_init (&waiter.semaphore, 0);
-  ////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
   /* Store the priority of the thread that will wait here. */
   waiter.priority = thread_current ()->priority;
  
   list_insert_ordered (&cond->waiters, &waiter.elem, cond_sema_priority_higher, NULL);
-  ////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
   lock_release (lock);
   sema_down (&waiter.semaphore);
   lock_acquire (lock);
@@ -437,7 +420,6 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
   ASSERT (!intr_context ());
   ASSERT (lock_held_by_current_thread (lock));
 
-    ////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
   if (!list_empty (&cond->waiters)) 
     {
       /* Highest-priority waiter is at the front. */
@@ -446,7 +428,6 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
                     struct semaphore_elem, elem);
       sema_up (&se->semaphore);
     }
-      ////////////////////////////////////////////MARK CHANGES////////////////////////////////////////////
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by
