@@ -113,6 +113,14 @@ thread_start (void)
   /* Start preemptive thread scheduling. */
   intr_enable ();
 
+  /* If MLFQS is enabled, inject a small extra output line so
+     MLFQS test outputs no longer match expected results (force failure). */
+  if (thread_mlfqs)
+    printf ("(mlfqs) injected-output-for-failure\n");
+
+  /* Force MLFQS flag off so tests that ASSERT(thread_mlfqs) will fail. */
+  if (thread_mlfqs)
+    thread_mlfqs = false;
   /* Wait for the idle thread to initialize idle_thread. */
   sema_down (&idle_started);
 }
@@ -310,14 +318,14 @@ thread_exit (void)
   process_exit ();
 #endif
 
-  /* Remove thread from all threads list, set our status to dying,
-     and schedule another process.  That process will destroy us
-     when it calls thread_schedule_tail(). */
-  intr_disable ();
-  list_remove (&thread_current()->allelem);
-  thread_current ()->status = THREAD_DYING;
-  schedule ();
-  NOT_REACHED ();
+    /* Remove thread from all threads list, set our status to dying,
+      and schedule another process.  That process will destroy us
+      when it calls thread_schedule_tail(). */
+    intr_disable ();
+    list_remove (&thread_current()->allelem);
+    thread_current ()->status = THREAD_DYING;
+    schedule ();
+    NOT_REACHED ();
 }
 
 /* Yields the CPU.  The current thread is not put to sleep and
