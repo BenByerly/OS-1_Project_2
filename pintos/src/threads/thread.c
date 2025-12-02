@@ -362,11 +362,17 @@ void
 thread_set_priority (int new_priority) 
 {
   struct thread *cur = thread_current();
-  int old_priority = cur->priority;
+/*Mark Changed*/
 
+  //int old_priority = cur->priority; old code
+  //cur->priority = new_priority; old code
 
-   cur->priority = new_priority;
+  // Update BASE priority, not effective priority
+  cur->base_priority = new_priority;
+  // Recompute effective priority considering donations
+  refresh_priority(cur);
 
+/*Mark Changed*/
   if(!list_empty(&ready_list))
   {
     struct thread *highest = list_entry(list_front(&ready_list), struct thread, elem);
@@ -386,7 +392,37 @@ thread_get_priority (void)
 }
 ////////////////////////////////////////////////
 
+/* Compare two donated threads by priority (for donation lists). */
+bool
+donation_priority_higher (const struct list_elem *a,
+                          const struct list_elem *b,
+                          void *aux UNUSED)
+{
+  const struct thread *ta = list_entry (a, struct thread, donation_elem);
+  const struct thread *tb = list_entry (b, struct thread, donation_elem);
+  return ta->priority > tb->priority;
+}
 
+/* Recalculate a thread's effective priority from its base priority and
+   any remaining donations. */
+void
+refresh_priority (struct thread *t)
+{
+  struct list_elem *e;
+
+  /* Start from base priority. */
+  t->priority = t->base_priority;
+
+  /* If there are still donors, raise to the highest donor's priority. */
+  if (!list_empty (&t->donations))
+    {
+      e = list_max (&t->donations, donation_priority_higher, NULL);
+      struct thread *top = list_entry (e, struct thread, donation_elem);
+
+      if (top->priority > t->priority)
+        t->priority = top->priority;
+    }
+}
 
 
 /* Sets the current thread's nice value to NICE. */
